@@ -1,0 +1,1123 @@
+---
+title: "2016 Presidential Election Finances (DAN DAR/P4 FINAL PROJECT)"
+author: "Andri Rizhakov"
+date: "February 4, 2016"
+---
+***
+***
+```{r echo=FALSE, message=FALSE, warning=FALSE, packages}
+# Load all of the packages that you end up using
+# in your analysis in this code chunk.
+
+# Notice that the parameter "echo" was set to FALSE for this code chunk.
+# This prevents the code from displaying in the knitted HTML output.
+# You should set echo=FALSE for all code chunks in your file.
+
+##install
+#install.packages('GGally', dependencies = TRUE)
+#install.packages('scales', dependencies = TRUE) #errors Error in install.packages : Updating loaded packages
+#install.packages('memisc', dependencies = TRUE) #summarize regress
+#install.packages('lattice', dependencies = TRUE)
+#install.packages('MASS', dependencies = TRUE)
+#install.packages('car', dependencies = TRUE) #code vars
+#install.packages('reshape', dependencies = TRUE) #wrangle data
+#install.packages('plyr', dependencies = TRUE) #transform data, errors
+
+## load the libraries
+library(ggplot2)
+library(GGally)
+library(scales) #order may matter here. if error, try to reinstall scales package.
+library(memisc)
+library(gridExtra)
+library(dplyr)
+library(reshape2)
+#library(plyr) #note: can interfere with 'dplyr': remove until needed later.
+```
+
+```{r echo=FALSE, Load_the_Data}
+### Load the Data
+
+## set correct directory
+#setwd("C:/Users/arizhako/Box Sync/Reference/programming/python/DAN/P4_DAR")
+setwd("C:/Users/Andri/Google Drive/Dev/mind/courses/udacity_DAN/P4_DAR/FINAL")
+```
+
+# 1. Exploratory Data Analysis: 2016 Presidential Campaign Finance data set
+
+The 2016 Presidential Campaign Finance data set was chosen because of personal interest and special relevance when doing this project (i.e., it is the election year!). 
+
+No particular questions for analysis come to mind, but I hope they will arise as I play around and explore and understand the data set. Generally, I am curious to learn about the demographics of who (i.e., which states, characterstics of donators, etc.) is donating to the various campaigns, how much, and to whom. Additionally, any insight inferred from who is winning the 2016 presidential race, given the financing information, would be interesting, and would make watching the elections even more exciting (to see how close I was!). 
+
+Raw data sets were downloaded from the FEC [Ref. 1].
+
+_**Part 1.1. Basic import and explore**_
+```{r echo=FALSE }
+## import main dataset 
+prez2016 <- read.csv('P00000001-ALL_2016.csv',
+                     row.names = NULL)
+colnames(prez2016) <- c(colnames(prez2016)[-1],"x")
+prez2016$x <- NULL
+
+# dataset structure summary
+str(prez2016)
+```
+
+Results give an indication of the various variable types and the number of unique field values. Most variables are Factor type. For the needs of this analysis, some fields are not necessary and will be carried through in the dataframes but mostly ignored (e.g., "cmte\_id", "tran\_id").
+
+_**Part 1.2. Summary**_
+```{r echo=FALSE }
+summary(prez2016)
+```
+
+Some more insights are obtained about the 2016 financing: Clinton has the most contribution counts (84,282 counts from "cand\_nm"); Matt Lenell has donated the most number of times (281 counts from "contbr\_nm"); The most donators came from New York City (10,478 counts from "contbr\_city"), though the most donators came from California (56,764 counts from "contbr\_st"). The most common donator is Retired (96,007 counts in "contbr\_occupation"). The mean contribution amount is $436, though median is $100 (from "contb\_receipt\_amt").  
+
+_**Part 1.3. Scatterplot Matrix**_
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.width=12, fig.height=12}
+### create scatterplot matrix
+## sample 10,000 entries from the data set
+set.seed(2016)
+#~ prez_samp <- prez[sample(1:length(prez$ID), 10000), ]
+#ggpairs(diamond_samp)
+#ggpairs(diamond_samp, params = c(shape = I('.'), outlier.shape = I('.'))) 
+#ggpairs(diamond_samp, wrap_fn_with_param_arg(params, params = c(shape = I('.'), outlier.shape = I('.')))) 
+#from GGally package 
+#ggpairs(pf_subset[sample.int(nrow(pf_subset), 1000), ])
+
+#ggpairs(prez_samp, 
+#        lower = list(continuous = wrap("points", shape = I('.'))), 
+#        upper = list(combo = wrap("box", outlier.shape = I('.'))))
+
+#taking too long, try to reduce cols of df, to only those of factors < 80
+#use subset
+
+## use subset of full prez set
+prez2016_trunc1 <- subset(prez2016, select = c(cand_id,
+                                     cand_nm,
+                                     contbr_st,
+                                     contb_receipt_amt))
+prez2016_trunc1.samp <- prez2016_trunc1[sample(1:length(prez2016_trunc1$cand_id), 10000), ]
+
+#generic 'ggpairs' implementation, can finesse if needed later
+ggpairs(prez2016_trunc1.samp)
+
+
+#ggpairs(prez_trunc1.samp, 
+#        lower = list(continuous = wrap("points", shape = I('.'))), 
+#        upper = list(combo = wrap("box", outlier.shape = I('.'))))
+
+## saving the plot
+#plotMatrix1 <- ggpairs(prez_trunc1.samp, 
+#        lower = list(continuous = wrap("points", shape = I('.'))), 
+#        upper = list(combo = wrap("box", outlier.shape = I('.'))))
+
+#getPlot(plotMatrix1,i = all, j = all)
+#ggsave("ScatterplotMatrix_df_trunc1.samp.jpg")
+#dev.off()
+
+# use pdf() instead of svg(), if you want PDF output
+#svg("plotMatrix1.svg", height = 10, width = 10)
+#png("plotMatrix1.png")
+#print(plotMatrix1)
+#dev.off()
+
+```
+
+The scatter plot matrix gives us some preliminary plotting of the sampled data set and helps us understand the full data set. The structure, values, shapes of plots, distributions, and preliminary relationships are more understood by plotting each variable against all others. The counts of each variable are plotted on the diagonal. For the off-diagonal plots, the only potentially useful plots are the box plots for the "contb\_receipt\_amt", because it is the only quantitative variable. 
+
+_**Part 1.4. Basic plots: how many counts of itemized contributions and count of each.**_
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.width=12 }
+pBar_1_2016 <- ggplot(data = prez2016, 
+                      aes(x = cand_nm)) +
+  geom_bar() +
+  ggtitle("Contribution Count, by Candidate (2016)") +
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5))
+
+grid.arrange(pBar_1_2016)
+
+#summary(subset(prez2016, !is.na(contb_receipt_amt))$contb_receipt_amt)
+#summary(subset(
+#  subset(prez2016, contb_receipt_amt>0), 
+#  !is.na(contb_receipt_amt))$contb_receipt_amt
+#  )
+
+#test1 <- subset(
+#  subset(prez2016, contb_receipt_amt>0), 
+#  !is.na(contb_receipt_amt))
+
+#summary(test1$contb_receipt_amt)
+
+#qplot(data = test1, 
+#      x = contb_receipt_amt,
+#      y = ..count.., 
+#      geom = 'freqpoly',
+#      binwidth = 0.1
+#      ) +
+#  scale_x_log10(limits = c(1,10000)) #+
+#  #scale_x_continuous(limits = c(0,10000), breaks = seq(0,10000,100))
+
+pLine_1_2016 <- ggplot(data = subset(
+                                subset(prez2016, contb_receipt_amt>0),
+                                !is.na(contb_receipt_amt)
+                                    ),
+                       aes(x=contb_receipt_amt, 
+                           y=..count..)
+                       ) +
+  geom_freqpoly(binwidth = 0.1) +
+  ggtitle("Contribution Count, by Amount (2016)") +
+  scale_x_log10(limits = c(1,10000))
+
+grid.arrange(pLine_1_2016)
+
+```
+The basic univariate plots show the count of contributions made to each candidate, and the count of all contribution amounts. From the bar graph, Clinton, Sanders, and Carson are the three top contribution count receivers, with upwards of 60,000 contributions. From the line plot, it appears that the distribution of contribution amounts is approximately normal, after transforming the x-axis to logarithmic. Also, the highest contribution counts are for approximately $100 in size.
+
+_**Part 1.5. dplyr ops: get total contb receipt amt**_  
+Create a new data frame to get total "contb\_receipt\_amt" for each 2016 presidential candidate. The new data frame has the following structure:
+```{r echo=FALSE }
+prez2016.cont_by_name <- prez2016 %>%
+  group_by(cand_nm) %>%
+  summarise(sum_amnts = sum(contb_receipt_amt),
+            n = n()) %>%
+  arrange(cand_nm)
+
+str(prez2016.cont_by_name)
+```
+
+The total itemized contributions for each candidate are:
+```{r echo=FALSE }
+###manual check
+by(prez2016$contb_receipt_amt, prez2016$cand_nm, sum) #match with Excel for Bernie, Rubio
+```
+
+With the sum for all candidates:
+```{r echo=FALSE }
+sum(prez2016$contb_receipt_amt) #match with Excel
+```
+
+_**Part 1.6. More plots: distributions and sums of itemized contribution amounts**_
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.width=12, fig.height=14 }
+
+#ggplot(data = prez, aes(x = prez$cand_nm, y = prez$contb_receipt_amt)) +
+#  geom_boxplot()
+
+#ggplot(data = prez, aes(x = prez$cand_nm, y = prez$contb_receipt_amt)) +
+#  geom_boxplot() + 
+#  ylim(0, quantile(prez$contb_receipt_amt,0.99))
+
+#ggplot(data = prez, aes(x = prez$cand_nm, y = prez$contb_receipt_amt)) +
+#  geom_boxplot() + 
+#  ylim(0, quantile(prez$contb_receipt_amt,0.9999))
+
+pBox_1_2016 <- ggplot(data = prez2016, aes(x = cand_nm, y = contb_receipt_amt)) +
+  geom_boxplot() + 
+  ylim(0, quantile(prez2016$contb_receipt_amt,0.9999)) + 
+  ggtitle("Itemized Contribution Amount, by Candidate (2016)") +
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5))
+
+pBar_2_2016 <- ggplot(data = prez2016.cont_by_name, aes(x = cand_nm, y = sum_amnts)) +
+  geom_bar(stat="identity") + 
+  ggtitle("Sum of Itemized Contributions, by Candidate (2016)") +
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5))
+
+
+#plot both 
+grid.arrange(pBar_1_2016, pBox_1_2016, pBar_2_2016)
+```
+The first bar graph of each candidates total number of contributions is presented along with the box plot of the same candidate and the distribution of the contribution amounts. Additionally, from the data in the recently created data frame shows a bar graph of the total contribution amount each candidate has received.
+
+Focusing on the larger amounts and larger contribution totals, Carson, Clinton, Cruz, and Sanders all have high contribution counts. However, Carson, Cruz, and Sanders have a very similar box plot distribution - they are all near $0 contribution amount (probably more like $100, from the previous line plot). Clinton differs by having higher contribution amounts. Furthermore, Clinton has by far the highest total contribution amount. What is the cause of this discrepancy? 
+
+Discrepancy found in the itemized contributions: why so much total dollar contribution for Clinton? Is this reality, or a bug? What is the explanation behind this - especially given the news that Sanders has been setting campaign funding records?
+
+After emailing the FEC [Campaign finance reports and data: pubrec@fec.gov], then calling [phone number 8004249530, option #6], I finally spoke to a FEC data representative who explained this finding. I was able to go to [Ref. 2] for full information on the candidate. Discrepancy was due to the breakdown in itemized/unitemized contributions, and the *.csv datasets that are downloaded from the website are only for itemized contributions. For example, $9MM for Sanders was itemized, but he received more from unitemized - these are the fundraising records that were being broken. 
+
+Next, I checked for internal consistency and that was passed. I briefly took the amounts that were reported in the graphic on [Ref. 1] and compared to manually adding the itemized and unitemized amounts from [Ref. 2]. Although I was not able to align perfectly to the single dollar digit, the comparison was much improved with an error of perhaps a few percent. For example, Clinton had $63,366,253.00 from Itemized Individual Contributions from .csv file total [Ref.3], $61,726,374 from ALL.zip .csv via R and used in this analysis [Ref. 1], $62,785,473 from [Ref. 2] summary page - all more or less the same, at least for the purposes of this project's investigation. Thusly, the understanding is gained for the dataset in the importance of itemized vs. unitemized total amounts for contribution amounts.
+
+_**Part 1.7. Add non-itemized contributions as bulk amount**_
+```{r echo=FALSE, message=FALSE, warning=FALSE }
+### add non-itemized contributions
+## source: http://fec.gov/fecviewer/CandidateCommitteeDetail.do
+
+prez2016.contTotal_by_name <- data.frame(prez2016.cont_by_name)
+names(prez2016.contTotal_by_name)[names(prez2016.contTotal_by_name)=="sum_amnts"] <- "Itemized"
+prez2016.contTotal_by_name["Unitemized"] <- 0
+#str(prez.contTotal_by_name) ##review
+#table(prez2016.contTotal_by_name$cand_nm) ##review
+prez2016.contTotal_by_name[prez2016.contTotal_by_name$cand_nm == "Bush, Jeb", "Unitemized"] <- 1244623
+prez2016.contTotal_by_name[prez2016.contTotal_by_name$cand_nm == "Carson, Benjamin S.", "Unitemized"] <- 19641649
+prez2016.contTotal_by_name[prez2016.contTotal_by_name$cand_nm == "Christie, Christopher J.", "Unitemized"] <- 141428
+prez2016.contTotal_by_name[prez2016.contTotal_by_name$cand_nm == "Clinton, Hillary Rodham", "Unitemized"] <- 13292382
+prez2016.contTotal_by_name[prez2016.contTotal_by_name$cand_nm == "Cruz, Rafael Edward 'Ted'", "Unitemized"] <- 11064064
+prez2016.contTotal_by_name[prez2016.contTotal_by_name$cand_nm == "Fiorina, Carly", "Unitemized"] <- 3980707
+prez2016.contTotal_by_name[prez2016.contTotal_by_name$cand_nm == "Graham, Lindsey O.", "Unitemized"] <- 200049
+prez2016.contTotal_by_name[prez2016.contTotal_by_name$cand_nm == "Huckabee, Mike", "Unitemized"] <- 1314344
+prez2016.contTotal_by_name[prez2016.contTotal_by_name$cand_nm == "Jindal, Bobby", "Unitemized"] <- 134279
+prez2016.contTotal_by_name[prez2016.contTotal_by_name$cand_nm == "Kasich, John R.", "Unitemized"] <- 518444
+prez2016.contTotal_by_name[prez2016.contTotal_by_name$cand_nm == "Lessig, Lawrence", "Unitemized"] <- 0
+prez2016.contTotal_by_name[prez2016.contTotal_by_name$cand_nm == "O'Malley, Martin Joseph", "Unitemized"] <- 226725
+prez2016.contTotal_by_name[prez2016.contTotal_by_name$cand_nm == "Pataki, George E.", "Unitemized"] <- 24218
+prez2016.contTotal_by_name[prez2016.contTotal_by_name$cand_nm == "Paul, Rand", "Unitemized"] <- 4491348
+prez2016.contTotal_by_name[prez2016.contTotal_by_name$cand_nm == "Perry, James R. (Rick)", "Unitemized"] <- 139408
+prez2016.contTotal_by_name[prez2016.contTotal_by_name$cand_nm == "Rubio, Marco", "Unitemized"] <- 3257245
+prez2016.contTotal_by_name[prez2016.contTotal_by_name$cand_nm == "Sanders, Bernard", "Unitemized"] <- 30652976
+prez2016.contTotal_by_name[prez2016.contTotal_by_name$cand_nm == "Santorum, Richard J.", "Unitemized"] <- 216875
+prez2016.contTotal_by_name[prez2016.contTotal_by_name$cand_nm == "Trump, Donald J.", "Unitemized"] <- 2816148
+prez2016.contTotal_by_name[prez2016.contTotal_by_name$cand_nm == "Walker, Scott", "Unitemized"] <- 2652470
+prez2016.contTotal_by_name[prez2016.contTotal_by_name$cand_nm == "Webb, James Henry Jr.", "Unitemized"] <- 290305
+
+prez2016.contTotal_by_name["Ratio_U_I"] <- prez2016.contTotal_by_name$Unitemized / prez2016.contTotal_by_name$Itemized
+prez2016.contTotal_by_name["Total"] <- prez2016.contTotal_by_name$Unitemized + prez2016.contTotal_by_name$Itemized
+
+```
+Manually adding the amounts of unitemized contributions manually to a new data frame, we can then get a better picture for the cash flow coming into each candidate from most campaign sources. New data frame now has unitemized contribution totals from [Ref. 2] included.
+
+_**Part 1.8. Sum of Itemized and Unitemized Contributions, by Candidate**_
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.width=12, fig.height=18 }
+pBar_3_2016 <- ggplot(data = prez2016.contTotal_by_name, aes(x = cand_nm, y = Total)) +
+  geom_bar(stat="identity") + 
+  ggtitle("Sum of Itemized and Unitemized Contributions, by Candidate (2016)") +
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5))
+
+pBar_4_2016 <- ggplot(data = prez2016.contTotal_by_name, aes(x = cand_nm, y = Ratio_U_I)) +
+  geom_bar(stat="identity") + 
+  ggtitle("Ratio of Unitemized to Itemized Contributions, by Candidate (2016)") +
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5))
+
+#plot both 
+grid.arrange(pBar_1_2016, pBox_1_2016, pBar_2_2016, pBar_3_2016, pBar_4_2016, ncol=1)
+```
+The addition of the unitemized contributions helps paint the full picture of the campaign funds raised by the candidates. The addition of unitemized contributions data makes Sanders a true second place candidate, behind Clinton. Also, taking the ratio of unitemized to itemized contributions, we see that Sanders is the only candidate who has 3 times the unitemized contributions to itemized. 
+
+_**Part 1.9. Heat map of average itemized contribution amount for each candidate by state**_  
+A new data frame is made in order to process data in creating a heat map.  
+```{r echo=FALSE, fig.width=12, fig.height=12 }
+### create a heat map: State vs. Candidate.
+# organize data to long format: candidate, state, average amount, count
+prez2016.cont_by_st <- prez2016 %>%
+  group_by(cand_nm, contbr_st) %>%
+  summarise(avg_amnts = mean(contb_receipt_amt),
+            n = n()) %>%
+  ungroup() %>%
+  arrange(cand_nm)
+
+#head(prez2016.cont_by_st) ##review
+
+pHeat_1_2016 <- ggplot(aes(y = prez2016.cont_by_st$contbr_st, 
+           x = prez2016.cont_by_st$cand_nm, 
+           fill = prez2016.cont_by_st$avg_amnts),
+       data = prez2016.cont_by_st) +
+  geom_tile() +
+  scale_fill_gradientn(colors = colorRampPalette(c("green", "red"))(100)) +
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5))
+
+#plot both 
+grid.arrange(pHeat_1_2016, ncol=1)
+```
+Heat map shows the average contribution amounts by state for each candidate. This can be very useful if we wanted to compare a candidate's state-averaged contributions to another.
+
+To continue the exploratory data analysis, an investigation on parameter or parameters that can point to who is favored by America, using dollars contributed as their proxy vote, and if it can point to who may win the election.
+
+To approach this we need to replicate above exploratory data analysis on the 2012 and 2008 presidential data [Ref. 1] and see if there are any patterns that emerge. 
+
+>> **NOTE** The use of repetitive code below may seem like a function contruct would be more appropriate and efficient, however, I believe that due to the explaratory nature of the analysis and only 2 repeats after the initial, a function is not warranted. Furthermore, the blocks for each year are slightly different and require some modification that a cooking-cutter approach of a function would not permit.
+
+***
+
+# 2. Exploratory Data Analysis: 2012 Presidential Campaign Finance data set
+Purpose of this section is to see patterns with latest available data on a presidential electee, to eliminate inflation and other transient effects from analysis. Note that this is with incumbent president (Obama, assumed office first in 2008).
+
+Basic import of data set, preliminary graphical exploration and investigation. 
+
+_**Part 2.1. Basic import and explore**_
+```{r echo=FALSE}
+##import 2012 dataset. 
+prez2012 <- read.csv('P00000001-ALL_2012.csv', 
+                     row.names = NULL)#, 
+                     #row.names = NULL) #, sep = '\t'; header=T; #WORKS!
+
+colnames(prez2012) <- c(colnames(prez2012)[-1],"x")
+prez2012$x <- NULL
+
+#check
+#head(prez2012)
+
+# dataset structure summary
+str(prez2012)
+
+#summary(prez2012$contb_receipt_dt) ##review
+```
+
+Again, results give an indication of the various variable types and the number of unique field values. Most variables are Factor type. For the needs of this analysis, some fields are not necessary and will be carried through in the dataframes but mostly ignored (e.g., "cmte\_id", "tran\_id"). 
+
+_**Part 2.2. Summary**_
+```{r echo=FALSE}
+summary(prez2012)
+```
+
+Some more insights are obtained about the 2012 financing: Obama has the most contribution counts (4,117,404 counts from "cand\_nm"); Michael Smith has donated the most number of times (533 counts from "contbr\_nm"); The most donators came from New York City (138,289 counts from "contbr\_city"), though the most donators came from California (954,661 counts from "contbr\_st"). The most common donator is Retired (1,388,962 counts in "contbr\_occupation"). The mean contribution amount is $213, though median is $50 (from "contb\_receipt\_amt"). 
+
+_**Part 2.3. Scatterplot Matrix**_
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.width=12, fig.height=12 }
+### create scatterplot matrix
+## sample 10,000 entries from the data set
+set.seed(2012)
+#~ prez_samp <- prez[sample(1:length(prez$ID), 10000), ]
+#ggpairs(diamond_samp)
+#ggpairs(diamond_samp, params = c(shape = I('.'), outlier.shape = I('.'))) 
+#ggpairs(diamond_samp, wrap_fn_with_param_arg(params, params = c(shape = I('.'), outlier.shape = I('.')))) 
+#from GGally package 
+#ggpairs(pf_subset[sample.int(nrow(pf_subset), 1000), ])
+
+#ggpairs(prez_samp, 
+#        lower = list(continuous = wrap("points", shape = I('.'))), 
+#        upper = list(combo = wrap("box", outlier.shape = I('.'))))
+
+#taking too long, try to reduce cols of df, to only those of factors < 80
+#use subset
+
+## use subset of full prez set
+prez2012_trunc1 <- subset(prez2012, select = c(cand_id,
+                                     cand_nm,
+                                     contbr_st,
+                                     contb_receipt_amt))
+prez2012_trunc1.samp <- prez2012_trunc1[sample(1:length(prez2012_trunc1$cand_id), 10000), ]
+
+#generic 'ggpairs' implementation, can finesse if needed later
+ggpairs(prez2012_trunc1.samp)
+
+
+#ggpairs(prez_trunc1.samp, 
+#        lower = list(continuous = wrap("points", shape = I('.'))), 
+#        upper = list(combo = wrap("box", outlier.shape = I('.'))))
+
+## saving the plot
+#plotMatrix1 <- ggpairs(prez_trunc1.samp, 
+#        lower = list(continuous = wrap("points", shape = I('.'))), 
+#        upper = list(combo = wrap("box", outlier.shape = I('.'))))
+
+#getPlot(plotMatrix1,i = all, j = all)
+#ggsave("ScatterplotMatrix_df_trunc1.samp.jpg")
+#dev.off()
+
+# use pdf() instead of svg(), if you want PDF output
+#svg("plotMatrix1.svg", height = 10, width = 10)
+#png("plotMatrix1.png")
+#print(plotMatrix1)
+#dev.off()
+
+```
+
+Again, the scatter plot matrix gives us some preliminary plotting of the sampled data set and helps us understand the full data set. The structure, values, shapes of plots, distributions, and preliminary relationships are more understood by plotting each variable against all others. The counts of each variable are plotted on the diagonal. For the off-diagonal plots, the only potentially useful plots are the box plots for the "contb\_receipt\_amt", because it is the only quantitative variable. 
+
+A detour is needed before proceeding with a comparative analysis to that of the 2016 Presidential data set. The main correction that needs to be applied is the alignment of the same period of time that was used in the 2016 Presidential data set. The solution is to use the same 2012 Presidential data set, but shift in time. Specifically, because the 2016 Presidential data set is from 04/01/2015 to 09/30/2015 [Ref. 2], the same time frame needs to be applied to 2012 Presidential data set - 04/01/2011 to 09/30/2011. Thus, we need to use the receipt date field to convert to a date that R can sort on and then do the analysis on the normalized subset.
+
+```{r echo=FALSE }
+#as.Date(mydate2, "%d-%b-%y")
+prez2012$contb_receipt_dt <- as.Date(prez2012$contb_receipt_dt, "%d-%b-%y")
+#head(prez2012$contb_receipt_dt) ##review
+
+
+## the eq data is from  04/01/2011 - 09/30/2011
+#summary(prez2012$contb_receipt_amt>10000) ##review
+#summary(prez2012$contb_receipt_dt>"2011-04-01" & prez2012$contb_receipt_dt<"2011-09-30") ##review
+prez2012.normDate <- subset(prez2012,
+                            (prez2012$contb_receipt_dt>="2011-04-01" &    
+                               prez2012$contb_receipt_dt<="2011-09-30")
+                            )
+```
+
+_**Part 2.4. Basic plots: how many counts of itemized contributions and count of each.**_
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.width=12 }
+pBar_1_2012 <- ggplot(data = prez2012.normDate, 
+                 aes(x = cand_nm)) +
+  geom_bar() +
+  ggtitle("Contribution Count, by Candidate (2012)") +
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5))
+
+grid.arrange(pBar_1_2012)
+
+
+pLine_1_2012 <- ggplot(data = subset(
+                                subset(prez2012.normDate, contb_receipt_amt>0),
+                                !is.na(contb_receipt_amt)
+                                    ),
+                       aes(x=contb_receipt_amt, 
+                           y=..count..)
+                       ) +
+  geom_freqpoly(binwidth = 0.1) +
+  ggtitle("Contribution Count, by Amount (2012)") +
+  scale_x_log10(limits = c(1,10000))
+
+grid.arrange(pLine_1_2012)
+```
+The basic univariate plots show the count of contributions made to each candidate, and the count of all contribution amounts. From the bar graph, Obama, Romney, and Paul are the three top contribution count receivers, with upwards of 25,000 contributions. Obama has the most counts by far, but this is probably because he is absorbing all Democrat donations due to being the only Democrat candidate because he is the incumbent. From the line plot, it appears that the distribution of contribution amounts is approximately normal, after transforming the x-axis to logarithmic. Also, the highest contribution counts are for approximately $100 in size.
+
+_**Part 2.5. dplyr ops: get total contb receipt amt**_  
+Create a new data frame to get total "contb\_receipt\_amt" for each 2012 presidential candidate. The new data frame has the following structure:
+```{r echo=FALSE }
+prez2012.normDate.cont_by_name <- prez2012.normDate %>%
+  group_by(cand_nm) %>%
+  summarise(sum_amnts = sum(contb_receipt_amt),
+            n = n()) %>%
+  arrange(cand_nm)
+
+str(prez2012.normDate.cont_by_name)
+```
+
+The total itemized contributions for each candidate are:
+```{r echo=FALSE }
+###manual check
+by(prez2012.normDate$contb_receipt_amt, prez2012.normDate$cand_nm, sum)
+```
+
+With the sum for all candidates:
+```{r echo=FALSE }
+sum(prez2012.normDate$contb_receipt_amt)
+```
+
+_**Part 2.6. More plots: distributions and sums of itemized contribution amounts**_
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.width=12, fig.height=16 }
+
+#ggplot(data = prez, aes(x = prez$cand_nm, y = prez$contb_receipt_amt)) +
+#  geom_boxplot()
+
+#ggplot(data = prez, aes(x = prez$cand_nm, y = prez$contb_receipt_amt)) +
+#  geom_boxplot() + 
+#  ylim(0, quantile(prez$contb_receipt_amt,0.99))
+
+#ggplot(data = prez, aes(x = prez$cand_nm, y = prez$contb_receipt_amt)) +
+#  geom_boxplot() + 
+#  ylim(0, quantile(prez$contb_receipt_amt,0.9999))
+
+pBox_1_2012 <- ggplot(data = prez2012.normDate, 
+                 aes(x = cand_nm, 
+                     y = contb_receipt_amt)
+                 ) +
+  geom_boxplot() + 
+  ylim(0, quantile(prez2012.normDate$contb_receipt_amt,0.9999)) + 
+  ggtitle("Itemized Contribution Amount, by Candidate (2012)") +
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5))
+
+pBar_2_2012 <- ggplot(data = prez2012.normDate.cont_by_name, 
+                 aes(x = cand_nm, 
+                     y = sum_amnts)
+                 ) +
+  geom_bar(stat="identity") + 
+  ggtitle("Sum of Itemized Contributions, by Candidate (2012)") +
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5))
+
+
+#plot both 
+grid.arrange(pBar_1_2012, pBox_1_2012, pBar_2_2012)
+#
+```
+The first bar graph of each candidates total number of contributions is presented along with the box plot of the same candidate and the distribution of the contribution amounts. Additionally, from the data in the recently created data frame shows a bar graph of the total contribution amount each candidate has received.
+
+Focusing on the larger amounts and larger contribution totals, Obama, Romney, and Paul all have high contribution counts. However, Obama and Paul have a very similar box plot distribution - they are all near $0 contribution amount (probably more like $100, from the previous line plot). Romney differs by having higher contribution amounts. Furthermore, Romney has the highest total contribution amount. The discrepancy is again probably due to itemized vs. unitemized contributions, but cannot add non-itemized contributions as bulk amount because unitemized is lumped for the whole 2 year period. Addition of the full 2 year amount could potentially skew results. Therefore, Steps 7 and 8 are skipped.
+
+_**Part 2.9. Heat map of average itemized contribution amount for each candidate by state**_  
+
+A new data frame is made in order to process data in creating a heat map.   
+```{r echo=FALSE, fig.width=12, fig.height=12 }
+### create a hap map: State vs. Candidate.
+# organize data to long format: candidate, state, average amount, count
+prez2012.normDate.cont_by_st <- prez2012.normDate %>%
+  group_by(cand_nm, contbr_st) %>%
+  summarise(avg_amnts = mean(contb_receipt_amt),
+            n = n()) %>%
+  ungroup() %>%
+  arrange(cand_nm)
+
+#head(prez2012.normDate.cont_by_st) ##review
+
+pHeat_1_2012 <- ggplot(aes(y = prez2012.normDate.cont_by_st$contbr_st, 
+           x = prez2012.normDate.cont_by_st$cand_nm, 
+           fill = prez2012.normDate.cont_by_st$avg_amnts),
+  data = prez2012.normDate.cont_by_st) +
+  geom_tile() +
+  scale_fill_gradientn(colors = colorRampPalette(c("green", "red"))(100)) +
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5))
+
+#plot both 
+grid.arrange(pHeat_1_2012)
+```
+Again, heat map shows the average contribution amounts by state for each candidate. This can be very useful if we wanted to compare a candidate's state-averaged contributions to another.
+
+Proceeding further in the exploratory data analysis, an investigation on the 2008 presidential campaign finance set is performed. This should eliminate Obama's incumbency status as a skewing variable in the 2012 data set.
+
+***
+
+# 3. Exploratory Data Analysis: 2008 Presidential Campaign Finance data set
+Purpose of this section is to see patterns with a non-incumbent candidate (2012 was Obama's incumbency), and compare with the non-incumbent election of 2016. 
+
+Basic import of data set, preliminary graphical exploration and investigation. 
+
+_**Part 3.1. Basic import and explore**_
+```{r echo=FALSE }
+##import 2012 dataset. 
+prez2008 <- read.csv('P00000001-ALL_2008.csv', 
+                     row.names = NULL)#, 
+                     #row.names = NULL) #, sep = '\t'; header=T; #WORKS!
+
+colnames(prez2008) <- c(colnames(prez2008)[-1],"x")
+prez2008$x <- NULL
+
+#check
+#head(prez2008)
+
+# dataset structure summary
+str(prez2008)
+
+#summary(prez2008$contb_receipt_dt)
+```
+
+Again, results give an indication of the various variable types and the number of unique field values. Most variables are Factor type. For the needs of this analysis, some fields are not necessary and will be carried through in the dataframes but mostly ignored (e.g., "cmte\_id", "tran\_id"). 
+
+_**Part 3.2. Summary**_
+```{r echo=FALSE }
+summary(prez2008)
+```
+
+Some more insights are obtained about the 2008 financing: Obama has the most contribution counts (2,600,437 counts from "cand\_nm"); Doodad Pro has donated the most number of times (1627 counts from "contbr\_nm"); The most donators came from New York City (163,340 counts from "contbr\_city"), though the most donators came from California (712,532 counts from "contbr\_st"). The most common donator is Retired (784,290 counts in "contbr\_occupation"). The mean contribution amount is $257, though median is $100 (from "contb\_receipt\_amt").  
+
+_**Part 3.3. Scatterplot Matrix**_
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.width=12, fig.height=12}
+### create scatterplot matrix
+## sample 10,000 entries from the data set
+set.seed(2008)
+#~ prez_samp <- prez[sample(1:length(prez$ID), 10000), ]
+#ggpairs(diamond_samp)
+#ggpairs(diamond_samp, params = c(shape = I('.'), outlier.shape = I('.'))) 
+#ggpairs(diamond_samp, wrap_fn_with_param_arg(params, params = c(shape = I('.'), outlier.shape = I('.')))) 
+#from GGally package 
+#ggpairs(pf_subset[sample.int(nrow(pf_subset), 1000), ])
+
+#ggpairs(prez_samp, 
+#        lower = list(continuous = wrap("points", shape = I('.'))), 
+#        upper = list(combo = wrap("box", outlier.shape = I('.'))))
+
+#taking too long, try to reduce cols of df, to only those of factors < 80
+#use subset
+
+## use subset of full prez set
+prez2008_trunc1 <- subset(prez2008, select = c(cand_id,
+                                     cand_nm,
+                                     contbr_st,
+                                     contb_receipt_amt))
+prez2008_trunc1.samp <- prez2008_trunc1[sample(1:length(prez2008_trunc1$cand_id), 10000), ]
+
+#generic 'ggpairs' implementation, can finesse if needed later
+ggpairs(prez2008_trunc1.samp)
+
+
+#ggpairs(prez_trunc1.samp, 
+#        lower = list(continuous = wrap("points", shape = I('.'))), 
+#        upper = list(combo = wrap("box", outlier.shape = I('.'))))
+
+## saving the plot
+#plotMatrix1 <- ggpairs(prez_trunc1.samp, 
+#        lower = list(continuous = wrap("points", shape = I('.'))), 
+#        upper = list(combo = wrap("box", outlier.shape = I('.'))))
+
+#getPlot(plotMatrix1,i = all, j = all)
+#ggsave("ScatterplotMatrix_df_trunc1.samp.jpg")
+#dev.off()
+
+# use pdf() instead of svg(), if you want PDF output
+#svg("plotMatrix1.svg", height = 10, width = 10)
+#png("plotMatrix1.png")
+#print(plotMatrix1)
+#dev.off()
+
+```
+
+Again, the scatter plot matrix gives us some preliminary plotting of the sampled data set and helps us understand the full data set. The structure, values, shapes of plots, distributions, and preliminary relationships are more understood by plotting each variable against all others. The counts of each variable are plotted on the diagonal. For the off-diagonal plots, the only potentially useful plots are the box plots for the "contb\_receipt\_amt", because it is the only quantitative variable. 
+
+Again, a detour is needed before proceeding with a comparative analysis to that of the 2016 Presidential data set. The main correction that needs to be applied is the alignment of the same period of time that was used in the 2016 Presidential data set. The solution is to use the same 2008 Presidential data set, but shift in time. Specifically, because the 2016 Presidential data set is from 04/01/2015 to 09/30/2015, the same time frame needs to be applied to 2008 Presidential data set - 04/01/2007 to 09/30/2007. Thus, we need to use the receipt date field to convert to a date that R can sort on and do the analysis on the normalized subset.
+
+```{r echo=FALSE }
+#as.Date(mydate2, "%d-%b-%y")
+prez2008$contb_receipt_dt <- as.Date(prez2008$contb_receipt_dt, "%d-%b-%y")
+#head(prez2008$contb_receipt_dt)
+
+
+## the eq data is from  04/01/2011 - 09/30/2011
+#summary(prez2008$contb_receipt_amt>10000)
+#summary(prez2008$contb_receipt_dt>"2007-04-01" & prez2008$contb_receipt_dt<"2007-09-30")
+prez2008.normDate <- subset(prez2008,
+                            (prez2008$contb_receipt_dt>="2007-04-01" &    
+                               prez2008$contb_receipt_dt<="2007-09-30")
+                            )
+
+```
+
+_**Part 3.4. Basic plots: how many counts of itemized contributions and count of each.**_
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.width=12 }
+pBar_1_2008 <- ggplot(data = prez2008.normDate, 
+                 aes(x = cand_nm)) +
+  geom_bar() +
+  ggtitle("Contribution Count, by Candidate (2008)") +
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5))
+
+grid.arrange(pBar_1_2008)
+
+
+pLine_1_2008 <- ggplot(data = subset(
+                                subset(prez2008.normDate, contb_receipt_amt>0),
+                                !is.na(contb_receipt_amt)
+                                    ),
+                       aes(x=contb_receipt_amt, 
+                           y=..count..)
+                       ) +
+  geom_freqpoly(binwidth = 0.1) +
+  ggtitle("Contribution Count, by Amount (2008)") +
+  scale_x_log10(limits = c(1,10000))
+
+grid.arrange(pLine_1_2008)
+```
+The basic univariate plots show the count of contributions made to each candidate, and the count of all contribution amounts. From the bar graph, Obama and Clinton are the top two contribution count receivers, with upwards of 40,000 contributions, with various others above 20,000. Obama has the most counts by far, but not as many as during his incumbent year of 2012. From the line plot, it appears that the distribution of contribution amounts is approximately normal or bimodal, after transforming the x-axis to logarithmic. Also, the highest contribution counts are for approximately $100 in size, with another large peak at approximately $1,000.
+
+_**Part 3.5. dplyr ops: get total contb receipt amt**_
+Create a new data frame to get total contb receipt amt for 2012 Presidental Candidates. The new data frame has the following structure:
+```{r echo=FALSE }
+prez2008.normDate.cont_by_name <- prez2008.normDate %>%
+  group_by(cand_nm) %>%
+  summarise(sum_amnts = sum(contb_receipt_amt),
+            n = n()) %>%
+  arrange(cand_nm)
+
+str(prez2008.normDate.cont_by_name)
+
+###manual check
+#by(prez2008.normDate$contb_receipt_amt, prez2008.normDate$cand_nm, sum)
+#sum(prez2008.normDate$contb_receipt_amt)
+
+```
+
+The total itemized contributions for each candidate are:
+```{r echo=FALSE }
+###manual check
+by(prez2008.normDate$contb_receipt_amt, prez2008.normDate$cand_nm, sum)
+```
+
+With the sum for all candidates:
+```{r echo=FALSE }
+sum(prez2008.normDate$contb_receipt_amt)
+```
+
+_**Part 3.6. More plots: distributions and sums of itemized contribution amounts**_
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.width=12, fig.height=16 }
+
+#ggplot(data = prez, aes(x = prez$cand_nm, y = prez$contb_receipt_amt)) +
+#  geom_boxplot()
+
+#ggplot(data = prez, aes(x = prez$cand_nm, y = prez$contb_receipt_amt)) +
+#  geom_boxplot() + 
+#  ylim(0, quantile(prez$contb_receipt_amt,0.99))
+
+#ggplot(data = prez, aes(x = prez$cand_nm, y = prez$contb_receipt_amt)) +
+#  geom_boxplot() + 
+#  ylim(0, quantile(prez$contb_receipt_amt,0.9999))
+
+pBox_1_2008 <- ggplot(data = prez2008.normDate, 
+                 aes(x = cand_nm, 
+                     y = contb_receipt_amt)
+                 ) +
+  geom_boxplot() + 
+  ylim(0, quantile(prez2008.normDate$contb_receipt_amt,0.9999)) + 
+  ggtitle("Itemized Contribution Amount, by Candidate (2008)") +
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5))
+
+pBar_2_2008 <- ggplot(data = prez2008.normDate.cont_by_name, 
+                 aes(x = cand_nm, 
+                     y = sum_amnts)
+                 ) +
+  geom_bar(stat="identity") + 
+  ggtitle("Sum of Itemized Contributions, by Candidate (2008)") +
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5))
+
+
+#plot both 
+grid.arrange(pBar_1_2008, pBox_1_2008, pBar_2_2008)
+#
+```
+The first bar graph of each candidates total number of contributions is presented along with the box plot of the same candidate and the distribution of the contribution amounts. Additionally, from the data in the recently created data frame shows a bar graph of the total contribution amount each candidate has received.
+
+Focusing on the larger amounts and larger contribution totals, Obama and Clinton all have high contribution counts. However, Obama and Clinton have a very different box plot distribution - Obama's contributions were all near $0 contribution amount (probably more like $100, from the previous line plot), but Clinton differs by having higher contribution amounts and more spread out distribution. Furthermore, Clinton has the highest total contribution amount. The discrepancy is again probably due to itemized vs. unitemized contributions, but cannot add non-itemized contributions as bulk amount because unitemized is lumped for the whole 2 year period. Addition of the full 2 year amount could potentially skew results. Therefore, Steps 7 and 8 are skipped.
+
+_**Part 3.9. Heat map of average itemized contribution amount for each candidate by state**_  
+
+A new data frame is made in order to process data in creating a heat map.   
+```{r echo=FALSE, fig.width=12, fig.height=12 }
+### create a hap map: State vs. Candidate.
+# organize data to long format: candidate, state, average amount, count
+prez2008.normDate.cont_by_st <- prez2008.normDate %>%
+  group_by(cand_nm, contbr_st) %>%
+  summarise(avg_amnts = mean(contb_receipt_amt),
+            n = n()) %>%
+  ungroup() %>%
+  arrange(cand_nm)
+
+#head(prez2008.normDate.cont_by_st)
+
+pHeat_1_2008 <- ggplot(aes(y = prez2008.normDate.cont_by_st$contbr_st, 
+           x = prez2008.normDate.cont_by_st$cand_nm, 
+           fill = prez2008.normDate.cont_by_st$avg_amnts),
+  data = prez2008.normDate.cont_by_st) +
+  geom_tile() +
+  scale_fill_gradientn(colors = colorRampPalette(c("green", "red"))(100)) +
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5))
+
+#plot
+grid.arrange(pHeat_1_2008)
+```
+
+Again, heat map shows the average contribution amounts by state for each candidate. This can be very useful if we wanted to compare a candidate's state-averaged contributions to another.
+
+At this point, the exploratory data analysis is complete and a rough, high-level understanding of the data and its patterns obtained.  
+
+***
+***
+
+# 4. Univariate Section
+## 4.1 Univariate Plots Section
+For convenience sake, univariate plots are repeated below from sections 1.4, 2.4, and 3.4 above, and modified as needed to aid with readibility. For example, the line graphs of "contb\_receipt\_amt" count are combined on one plot to aid in comparison.
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.width=12, fig.height=14, Univariate_Bar_Charts}
+grid.arrange(pBar_1_2008, pBar_1_2012, pBar_1_2016, ncol=1) 
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.width=12, fig.height=8, Univariate_Line_Plots}
+ggplot() +
+  geom_freqpoly(data = subset(
+                              subset(prez2016, contb_receipt_amt>0),
+                              !is.na(contb_receipt_amt)
+                              ),
+                aes(x=contb_receipt_amt,
+                    y=..count..,
+                    color = 'blue'),
+                binwidth = 0.1
+                ) +
+  geom_freqpoly(data = subset(
+                              subset(prez2012.normDate, contb_receipt_amt>0),
+                              !is.na(contb_receipt_amt)
+                              ),
+                aes(x=contb_receipt_amt, 
+                    y=..count..,
+                    color = 'green'),
+                binwidth = 0.1
+                ) +
+  geom_freqpoly(data = subset(
+                              subset(prez2008.normDate, contb_receipt_amt>0),
+                              !is.na(contb_receipt_amt)
+                              ),
+                aes(x=contb_receipt_amt, 
+                    y=..count..,
+                    color = 'red'),
+                binwidth = 0.1
+                ) +
+  scale_colour_manual(name="Contribution Count by Amount (Election Year 2008, 2012, 2016)", 
+                      values=c("blue", "green", "red"), 
+                      labels=c("EY2016", "EY2012", "EY2008")
+                      ) +
+  scale_x_log10(limits = c(1,10000)) 
+```
+
+## 4.2 Univariate Analysis
+Some observations regarding the dataset are provided, given the questions from the project template.
+
+- What is the structure of your dataset?
+
+The structure of the dataset is provided in Parts 1.1, 2.1, and 3.1 for each 2016, 2012, and 2008 presidential campaign data sets. Generally, the structure contains 18 columns for key fields, and hundreds of thousands of rows, for each contribution received.
+
+- What is/are the main feature(s) of interest in your dataset?
+
+The main features of the datasets are the fields: "cand\_nm", "contbr\_st", and "contb\_receipt\_amt".
+
+- What other features in the dataset do you think will help support your investigation into your feature(s) of interest?
+
+Because of the independent nature of the other fields in the dataset, not many other features can be used in support of the features of interest. It is true that some fields like "contbr\_city" provide more information and could supplement "contbr\_st", but given the amount of values (11036 different entries for city), the clean up would be great in order to be handled on a laptop's computing capacity.
+
+- Did you create any new variables from existing variables in the dataset?
+
+Yes, variables that summed and averaged "contb\_receipt\_amt", the only numeric field, by state or candidate name were created. 
+
+- Of the features you investigated, were there any unusual distributions? Did you perform any operations on the data to tidy, adjust, or change the form of the data? If so, why did you do this?
+
+The main unusual distribution occurred after seeing results in Part 1.6. Clinton's total seemed much greater than any other candidate, though the contribution counts were not as great. The discussion in that section explains the vital need for inclusion of unitemized contributions to paint the entire picture - only itemized contributions were given in this dataset. 
+
+# 5. Bivariate Section
+## 5.1 Bivariate Plots Section
+For convenience sake, bivariate plots are repeated below from Parts 1.6, 2.6, and 3.6 above. 
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.width=12, fig.height=16, Bivariate_Plots}
+grid.arrange(pBox_1_2008, pBox_1_2012, pBox_1_2016, ncol=1)
+```
+
+## 5.2 Bivariate Analysis
+Some observations regarding the dataset are provided, given the questions from the project template.
+
+- Talk about some of the relationships you observed in this part of the investigation. How did the feature(s) of interest vary with other features in the dataset? 
+
+The box plot was the main tool used in comparing two variables, given that only 1 variable in the entire data set was numeric. The relationships and other understanding gained from the dataset from the bivariate plots is discussed in Parts 1.6, 2.6, and 3.6 above. 
+
+- Did you observe any interesting relationships between the other features (not the main feature(s) of interest)?
+
+There does appear to be a relationship between the distributions of grass root campaigns (Sanders, Cruz, etc.) and more establishment-supported campaigns (Cristie, Bush, etc.), though not formally quanified. In the grass root campaigns the means, medians, and range of amounts for majority of the contributions are much lower than the establishment campaigns. 
+
+- What was the strongest relationship you found?
+
+Unfortunately, because only one numeric variable was provided, no quantitative relationship parameters like Pearson's r coefficient could be calculated.
+
+# 6. Multivariate Section
+## 6.1 Multivariate Plots Section
+For convenience sake, bivariate plots are repeated below from Parts 1.6, 2.6, and 3.6 above. 
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.width=12, fig.height=30, Multivariate_Plots}
+grid.arrange(pHeat_1_2008, pHeat_1_2012, pHeat_1_2016, ncol=1)
+```
+
+## 6.2 Multivariate Analysis
+Some observations regarding the dataset are provided, given the questions from the project template.
+
+- Talk about some of the relationships you observed in this part of the investigation. Were there features that strengthened each other in terms of looking at your feature(s) of interest?
+
+The heat map and scatterplot matrix were the main tools used in comparing 3 variables, given that only 1 variable in the entire data set was numeric (other 2 fields had to be non-numeric, qualitative values). The relationships are first introduced in Parts 1.9, 2.9, and 3.9 above. No further insight is gained because state-level contributions is at a level of granularity that is above the scope of this exploratory data analysis.
+
+- Were there any interesting or surprising interactions between features?
+
+Some interesting, qualitative observations can be obtained. First, there seem to be non-states in the data set, such as "contbr\_st". This could be either a bug, or some proxy for a state or region that needs to be looked into further. The red elements are those states that have contributed to a candidate highly. Likewise, those candidates with non-existant support from majority of states did not get very far in the election process, e.g. John H Cox or Thaddeus McCotter. 
+
+- OPTIONAL: Did you create any models with your dataset? Discuss the strengths and limitations of your model.
+
+Unfortunately, because only one numeric variable was provided, it would have been difficult to build a model, at least within the scope of this exploratory data analysis assignment, the tools and concepts available. This is certainly a step in a follow-up analysis of increased rigor.
+
+***  
+
+# 7. Final Plots and Summary
+```{r echo=FALSE}
+#You will select three plots from your analysis to polish and share in this section. The three plots should show different trends and should be polished with #appropriate labels, units, and titles.
+#
+#Are the final three plots varied and do they meet some of the following criteria
+#1. Draw comparisons.
+#2. Identify trends.
+#3. Engage a wide audience.
+#4. Explain a complicated finding.
+#5. Clarify a gap between perception and reality.
+#6. Enable the reader to digest large amounts of information.
+```
+### Plot One  
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.width=8, fig.height=8, Plot_one}
+ggplot() +
+  geom_freqpoly(data = subset(
+                              subset(prez2016, contb_receipt_amt>0),
+                              !is.na(contb_receipt_amt)
+                              ),
+                aes(x=contb_receipt_amt,
+                    y=..count..,
+                    color = 'blue'),
+                binwidth = 0.1
+                ) +
+  geom_freqpoly(data = subset(
+                              subset(prez2012.normDate, contb_receipt_amt>0),
+                              !is.na(contb_receipt_amt)
+                              ),
+                aes(x=contb_receipt_amt, 
+                    y=..count..,
+                    color = 'green'),
+                binwidth = 0.1
+                ) +
+  geom_freqpoly(data = subset(
+                              subset(prez2008.normDate, contb_receipt_amt>0),
+                              !is.na(contb_receipt_amt)
+                              ),
+                aes(x=contb_receipt_amt, 
+                    y=..count..,
+                    color = 'red'),
+                binwidth = 0.1
+                ) +
+  scale_colour_manual(name="Contribution Count by Amount (Election Year 2008, 2012, 2016)", 
+                      values=c("blue", "green", "red"), 
+                      labels=c("EY2016", "EY2012", "EY2008")
+                      ) +
+  scale_x_log10(limits = c(1,10000)) +
+  theme(legend.justification=c(0,1), legend.position=c(0,1))
+
+```
+
+### Description One  
+
+The first chosen plot is a univariate comparison of the count of "cont\_receipt\_amt" by 3 election years. This plot is a first attempt at answering the question "how have contribution amounts varied over the last few election year cycles?". The general shape is approximately the same approximately normal distribution, with a potential bimodal distribution for EY2008. The counts of large contributions (>$1,000) have decreased from EY2008 to EY2012 and EY2016 from about 50,000 counts to 35,000. Furthermore, only looking at EY2008 and EY2016 - the 2 non-incumbent years - EY2016 spikes at ~$100 contribution amount at 70,000 counts, while EY2008 has two spikes at $200-$500 (50,000 counts) and $2,000-$5,000 (50,000 counts). An interpretation of this decrease in donation amounts from EY2008 to EY2016 is that the average, middle class population is starting to contribute to their candidates of choice, thus voting with their dollars. This is an important note in the face-off in Clinton vs. Sanders for the Democratic ticket - the unitemized contribution funding finding from the section above, combined with the shift in itemized contribution from this plot, and the box plot of contribution amount from the section above - may indicate that the population, generally middle class by people count, is leaning in this direction. 
+
+### Plot Two
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.width=12, fig.height=16, Plot_Two}
+##### modify data frame to fill in plots
+
+### 2012
+# 2016 Democrats
+D2016 <- c("Clinton, Hillary Rodham", "Sanders, Bernard", "O'Malley, Martin Joseph", "Lessig, Lawrence", "Webb, James Henry Jr.")
+# 2016 Republican
+R2016 <- c("Carson, Benjamin S.", "Cruz, Rafael Edward 'Ted'", "Bush, Jeb", "Rubio, Marco", "Trump, Donald J.", "Paul, Rand", "Fiorina, Carly", "Kasich, John R.", "Walker, Scott", "Christie, Christopher J.", "Graham, Lindsey O.", "Huckabee, Mike", "Jindal, Bobby", "Perry, James R. (Rick)", "Santorum, Richard J.", "Pataki, George E.")
+prez2016$party <- ifelse(prez2016$cand_nm %in% D2016, "Dem.", 
+                         ifelse(prez2016$cand_nm %in% R2016, "Rep.", "Other")
+                         )
+
+### 2012
+# 2012 Democrats
+D2012 <- c("Obama, Barack")
+# 2012 Republican
+R2012 <- c("Bachmann, Michele", "Cain, Herman", "Gingrich, Newt", "Huntsman, Jon", "McCotter, Thaddeus G", "Paul, Ron", "Pawlenty, Timothy", "Perry, Rick", "Romney, Mitt", "Santorum, Rick")
+#2012 Libertarian
+L2012 <- c("Johnson, Gary Earl")
+#2012 Other
+O2012 <- c("Roemer, Charles E. 'Buddy' III")
+#2012 Green
+G2012 <- c("Stein, Jill")
+
+prez2012.normDate$party <- ifelse(prez2012.normDate$cand_nm %in% D2012, "Dem.", 
+                         ifelse(prez2012.normDate$cand_nm %in% R2012, "Rep.", "Other")
+                         )
+
+### 2008
+# 2008 Democrats
+D2008 <- c("Obama, Barack","Clinton, Hillary Rodham","Edwards, John","Richardson, Bill","Dodd, Christopher J","Biden, Joseph R Jr","Kucinich, Dennis J","Gravel, Mike")
+# 2012 Republican
+R2008 <- c("McCain, John S","Romney, Mitt","Giuliani, Rudolph W","Paul, Ron","Thompson, Fred Dalton","Huckabee, Mike","Tancredo, Thomas Gerald","Brownback, Samuel Dale","Hunter, Duncan","Thompson, Tommy G","Cox, John H","Gilmore, James S III")
+
+prez2008.normDate$party <- ifelse(prez2008.normDate$cand_nm %in% D2008, "Dem.", 
+                         ifelse(prez2008.normDate$cand_nm %in% R2008, "Rep.", "Other")
+                         )
+
+
+## plot
+pBox_1_2008_color <- ggplot(data = prez2008.normDate, 
+                 aes(x = cand_nm, 
+                     y = contb_receipt_amt, 
+                     color = party)
+                 ) +
+  geom_boxplot() + 
+  ylim(0, quantile(prez2008.normDate$contb_receipt_amt,0.9999)) + 
+  ggtitle("Itemized Contribution Amount, by Candidate (2008)") +
+  scale_colour_manual(name="Party", 
+                      values=c("blue", "red", "grey"), 
+                      labels=c("Dem.", "Rep.", "Other")
+                      ) +
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5))
+
+pBox_1_2012_color <- ggplot(data = prez2012.normDate, 
+                      aes(x = cand_nm,
+                          y = contb_receipt_amt,
+                          color = party)
+                      ) +
+  geom_boxplot() + 
+  ylim(0, quantile(prez2012.normDate$contb_receipt_amt,0.9999)) + 
+  ggtitle("Itemized Contribution Amount, by Candidate (2012)") +
+  scale_colour_manual(name="Party", 
+                      values=c("blue", "grey", "red"), 
+                      labels=c("Dem.", "Other", "Rep.")
+                      ) +
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5))
+
+pBox_1_2016_color <- ggplot(data = prez2016, 
+                      aes(x = cand_nm, 
+                          y = contb_receipt_amt,
+                          color = party)
+                      ) +
+  geom_boxplot() + 
+  ylim(0, quantile(prez2016$contb_receipt_amt,0.9999)) + 
+  ggtitle("Itemized Contribution Amount, by Candidate (2016)") +
+  scale_colour_manual(name="Party", 
+                      values=c("blue", "red", "grey"), 
+                      labels=c("Dem.", "Rep.", "Other")
+                      ) +
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5))
+
+# show plots
+grid.arrange(pBox_1_2008_color, pBox_1_2012_color, pBox_1_2016_color, ncol=1)
+
+```
+
+### Description Two
+
+The second chosen plot is a bivariate comparison of the box plots of "cont\_receipt\_amt" of each candidate by 3 election years (technically this is multivariate with the creation of the party, but this coloring was only meant to aid in elucidating the candidates). This plot is an attempt to show the evolution in time of the winning candidates along with their funding distribution. Tracking Obama starting in 2008 when he first won the election, the distribution is highly skewed towards the smaller values for the median. Clinton, however, is higher in median and significantly higher in the range of the IQR. This behavior is repeated in 2016, with Clinton being the constant. Although her median has dropped to that of Sanders, the quartile range between 75th and 50th remains significantly higher than Sanders, which indicates a presence of wealthy donors. In my opinion, although the absolute amount donated remains important. Even if distribution favors the populist with skew towards the lower contribution amounts is very low total amount, the expectation is that this will not bring the name out and election will probably not happen - a critical mass is needed, with enough money to get the information out to voters across the country. Conversely, if the big money receipient receives massive amounts of money, this lack of concern for resources increases the ability to overwhelm the competition in terms of TV commercials, campaign events, data analysis teams and hardware, logistical support, etc. The takeaway from this plot suggests that Clinton-Sanders resembles a similar pattern to Clinton-Obama, with Sanders appearing on the winning side as Obama did.
+
+### Plot Three
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.width=6, fig.height=18, Plot_Three}
+##### obtain list of state names in abbr form
+states <- c("AL", "MT", "AK", "NE", "AZ", "NV", "AR", "NH", "CA", "NJ", "CO", "NM", "CT", "NY", "DE", "NC", "FL", "ND", "GA", "OH", "HI", "OK", "ID", "OR", "IL", "PA", "IN", "RI", "IA", "SC", "KS", "SD", "KY", "TN", "LA", "TX", "ME", "UT", "MD", "VT", "MA", "VA", "MI", "WA", "MN", "WV", "MS", "WI", "MO", "WY")
+
+prez2016.cont_by_st.clean <- subset(prez2016.cont_by_st, prez2016.cont_by_st$contbr_st %in% states)
+prez2012.normDate.cont_by_st.clean <- subset(prez2012.normDate.cont_by_st, prez2012.normDate.cont_by_st$contbr_st %in% states)
+prez2008.normDate.cont_by_st.clean <- subset(prez2008.normDate.cont_by_st, prez2008.normDate.cont_by_st$contbr_st %in% states)
+
+### plot
+pHeat_1_2016_clean <- ggplot(aes(y = contbr_st,
+                                 x = cand_nm, 
+                                 fill = avg_amnts
+                                 ),
+                             data = prez2016.cont_by_st.clean
+                             ) +
+  geom_tile() +
+  scale_fill_gradientn(colors = colorRampPalette(c("green", "red"))(100)) +
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5))
+
+pHeat_1_2012_clean <- ggplot(aes(y = contbr_st,
+                                 x = cand_nm,
+                                 fill = avg_amnts
+                                 ),
+                             data = prez2012.normDate.cont_by_st.clean
+                             ) +
+  geom_tile() +
+  scale_fill_gradientn(colors = colorRampPalette(c("green", "red"))(100)) +
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5))
+
+pHeat_1_2008_clean <- ggplot(aes(y = contbr_st,
+                                 x = cand_nm,
+                                 fill = avg_amnts
+                                 ),
+                             data = prez2008.normDate.cont_by_st.clean
+                             ) +
+  geom_tile() +
+  scale_fill_gradientn(colors = colorRampPalette(c("green", "red"))(100)) +
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5))
+
+#plot all 
+grid.arrange(pHeat_1_2008_clean, pHeat_1_2012_clean, pHeat_1_2016_clean, ncol=1)
+```
+
+### Description Three
+
+The third chosen plot is a multivariate comparison of the heat maps of "cont\_receipt\_amt" of each candidate and state by 3 election years. This plot is an attempt to show the evolution in time of the funding distribution mapped amongst the states. Besides a qualitative understanding of each candidate's state average funding performance and a comparison to their peers, there is not much information to pull from this. The one observation to note is the importance for a candidate to have support amongst all states - low country-wide support probably means no election win.
+
+***  
+
+# 8. Reflection
+
+The successes of this investigation are contained in the exploratory data analysis step that led to many insights. Following the approach of the instructor in the example walk through of exploratory data analysis in Lesson 6 of the course, a similar path was taken here: after obtaining and loading the data, steps were taken to get structure and summary information, scatterplot matrices to see how variables interacted with one another, and then more and more refined univariate, bivariate, and multivariate plots were created to get an understanding of the data. 
+
+The difficulties were mostly not so much difficulties, but stepping stones and opportunities to understand R and the exploratory data analysis process better. Some challenges were presented when a certain way the appearance of a plot was desired, but personal attempts were not fruitful; online investigation and consideration of other approaches allowed the solution to be obtain, and sometimes, even other insights were gained about R or the EDA process that were not anticipated or sought after.
+
+The data has potentially revealed that count is an important indicator of potential presidency. For example, in Part 2.6., though Obama has lower median and lower total amount of funding, but he has many more counts than the field and could potentially be used in prediction of the presidency. Furthermore, it appears that the itemized count is an indicator, and unitemized amounts may not be necessary after all. Future work is to build a functional predictive model and see if these insights are correct. Further, it would be ideal if all contribution data, including the unitemized contributions that hindered progress on this investigation, could be included in one set for full analysis. 
+
+***  
+
+
+***
+***
+
+
+# Appendix 1. References.
+
+1. http://fec.gov/disclosurep/pnational.do
+
+2. http://fec.gov/fecviewer/CandidateCommitteeDetail.do
+
+3. http://fec.gov/fecviewer/CandCmteTransaction.do
+
+4. Stackoverflow {e.g., [Vertical labeling of x-axis in ggplot](https://stackoverflow.com/questions/1330989/rotating-and-spacing-axis-labels-in-ggplot2); [Changing legend, while combining different graphs based on different data sets on one plot](https://stackoverflow.com/questions/24932940/ggplot-does-not-show-legend-in-geom-histogram); [Conditional data frame modification](https://stackoverflow.com/questions/8005154/conditionally-remove-dataframe-rows-with-r);  [Additional data frame variable creation](https://stackoverflow.com/questions/15016723/how-to-add-column-into-a-dataframe-based-on-condition-in-r-programming)}
+
+5. R documentation {via internal '?' and '??' commands}
+
+6. [R Markdown Cheat Sheet](https://www.rstudio.com/wp-content/uploads/2015/02/rmarkdown-cheatsheet.pdf)
+
+7. Miscellaneous {e.g., [Using the underscore in Rmd document without the text after being italicized](https://www.question-defense.com/2010/02/12/include-underscores-while-using-markdown-without-them-being-bold-or-italic-indicators-for-text); }
+
+***
+
